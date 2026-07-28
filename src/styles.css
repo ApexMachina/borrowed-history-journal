@@ -1,0 +1,106 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --color-bg: #0a0810;
+  --color-bg-elevated: #12101a;
+  --color-surface: #18151f;
+  --color-surface-hover: #1f1b2a;
+  --color-fg: #e8e4ef;
+  --color-fg-muted: #9a93a8;
+  --color-fg-subtle: #6b6478;
+  --color-border: #2a2535;
+  --color-border-strong: #3d364d;
+  --color-accent: #7ec8c8;
+  --color-accent-soft: #5a9e9e;
+  --color-accent-dim: color-mix(in oklab, #7ec8c8 14%, transparent);
+  --color-accent-fg: #0a0810;
+  --color-deduction: #9b8ec4;
+  --color-experience: #7ec8c8;
+  --color-borrowed: #c4a882;
+  --color-ring: #7ec8c8;
+
+  --font-display: "Cormorant Garamond", "Times New Roman", Georgia, serif;
+  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+
+  --shadow-soft: 0 1px 0 color-mix(in oklab, #e8e4ef 4%, transparent),
+    0 12px 40px color-mix(in oklab, #000 40%, transparent);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    font-family: var(--font-display);
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-accent) 28%, transparent);
+    color: var(--color-fg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-sans {
+    font-family: var(--font-sans);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
