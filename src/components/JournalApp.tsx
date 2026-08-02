@@ -1,12 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
-import { Download, Feather, RotateCcw } from "lucide-react";
-import type { JournalEntry, SourceKind } from "@/lib/journal";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
+import { Download, Feather, RotateCcw, Upload } from "lucide-react";
+import type { JournalEntry, JournalMeta, SourceKind } from "@/lib/journal";
 import {
   createEntry,
   downloadJson,
   exportEntriesJson,
-  loadEntries,
+  loadEntriesDurable,
+  loadMeta,
+  markExported,
+  mergeEntries,
+  parseImportPayload,
   saveEntries,
+  shouldNudgeBackup,
 } from "@/lib/journal";
 import { cn } from "@/lib/utils";
 import { CategoryButton } from "./CategoryButton";
@@ -18,20 +29,41 @@ type View = "compose" | "review";
 
 export function JournalApp() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [meta, setMeta] = useState<JournalMeta>({
+    updatedAt: null,
+    lastExportAt: null,
+  });
   const [hydrated, setHydrated] = useState(false);
   const [text, setText] = useState("");
   const [view, setView] = useState<View>("compose");
   const [lastKind, setLastKind] = useState<SourceKind | null>(null);
   const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setEntries(loadEntries());
-    setHydrated(true);
+    let cancelled = false;
+    (async () => {
+      const loaded = await loadEntriesDurable();
+      if (cancelled) return;
+      setEntries(loaded);
+      setMeta(loadMeta());
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const persist = useCallback((next: JournalEntry[]) => {
     setEntries(next);
     saveEntries(next);
+    setMeta(loadMeta());
+  }, []);
+
+  const flash = useCallback((message: string) => {
+    setStatus(message);
+    window.setTimeout(() => setStatus(null), 4000);
   }, []);
 
   const handleSave = (kind: SourceKind) => {
@@ -44,7 +76,6 @@ export function JournalApp() {
     setLastKind(kind);
     setText("");
     setView("review");
-    // Brief press feedback without blocking UX
     window.setTimeout(() => setSaving(false), 180);
   };
 
@@ -55,24 +86,61 @@ export function JournalApp() {
       `borrowed-history-journal-${stamp}.json`,
       exportEntriesJson(entries),
     );
+    markExported();
+    setMeta(loadMeta());
+    flash("Backup saved to your downloads.");
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const raw = await file.text();
+      const incoming = parseImportPayload(raw);
+      if (incoming === null) {
+        flash("That file could not be read as a journal backup.");
+        return;
+      }
+      if (incoming.length === 0) {
+        flash("That backup contains no entries.");
+        return;
+      }
+      const merged = mergeEntries(entries, incoming);
+      const added = merged.length - entries.length;
+      persist(merged);
+      setView("review");
+      flash(
+        added > 0
+          ? `Restored ${incoming.length} from backup (${added} new).`
+          : `Loaded backup — ${incoming.length} entries already present.`,
+      );
+    } catch {
+      flash("Could not open that file.");
+    }
   };
 
   const handleClearAll = () => {
     if (entries.length === 0) return;
     const ok = window.confirm(
-      "Clear all entries from this device? This cannot be undone.",
+      "Clear all entries from this device? Export a backup first if you want them later.",
     );
     if (!ok) return;
     persist([]);
     setLastKind(null);
     setView("compose");
+    flash("Journal cleared on this device.");
   };
 
   const canSave = text.trim().length > 0 && !saving;
+  const showBackupNudge = shouldNudgeBackup(meta, entries.length);
 
   return (
     <div className="relative min-h-dvh overflow-x-hidden">
-      {/* Soft ambient wash — barely perceptible */}
       <div
         className="pointer-events-none absolute inset-0"
         aria-hidden
@@ -80,6 +148,16 @@ export function JournalApp() {
           background:
             "radial-gradient(ellipse 80% 50% at 50% -10%, color-mix(in oklab, var(--color-accent) 6%, transparent), transparent 55%), radial-gradient(ellipse 60% 40% at 100% 100%, color-mix(in oklab, #4a3a6a 12%, transparent), transparent 50%)",
         }}
+      />
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="sr-only"
+        onChange={handleImportFile}
+        tabIndex={-1}
+        aria-hidden
       />
 
       <div className="relative mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-10 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6 sm:pt-10">
@@ -98,6 +176,15 @@ export function JournalApp() {
             deduction, direct experience, or something you only received.
           </p>
         </header>
+
+        {status && (
+          <p
+            role="status"
+            className="mb-4 rounded-xl border border-border/80 bg-surface/70 px-3 py-2 text-center font-sans text-xs text-fg-muted"
+          >
+            {status}
+          </p>
+        )}
 
         {!hydrated ? (
           <div
@@ -118,23 +205,28 @@ export function JournalApp() {
             onSave={handleSave}
             hasEntries={entries.length > 0}
             onOpenReview={() => setView("review")}
+            onImport={handleImportClick}
           />
         ) : (
           <ReviewView
             entries={entries}
             lastKind={lastKind}
+            showBackupNudge={showBackupNudge}
             onNewEntry={() => {
               setLastKind(null);
               setView("compose");
             }}
             onExport={handleExport}
+            onImport={handleImportClick}
             onClear={handleClearAll}
           />
         )}
 
         <footer className="mt-auto pt-10 text-center">
-          <p className="font-sans text-[0.7rem] tracking-wide text-fg-subtle">
-            Stored only on this device. Nothing is sent away.
+          <p className="font-sans text-[0.7rem] leading-relaxed tracking-wide text-fg-subtle">
+            Kept privately on this device (browser storage).
+            <br />
+            Export a backup file if you want a copy you can restore later.
           </p>
         </footer>
       </div>
@@ -149,6 +241,7 @@ function ComposeView({
   onSave,
   hasEntries,
   onOpenReview,
+  onImport,
 }: {
   text: string;
   onTextChange: (v: string) => void;
@@ -156,6 +249,7 @@ function ComposeView({
   onSave: (kind: SourceKind) => void;
   hasEntries: boolean;
   onOpenReview: () => void;
+  onImport: () => void;
 }) {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300">
@@ -214,15 +308,25 @@ function ComposeView({
         </div>
       </div>
 
-      {hasEntries && (
+      <div className="flex flex-col items-center gap-3">
+        {hasEntries && (
+          <button
+            type="button"
+            onClick={onOpenReview}
+            className="font-sans text-sm text-fg-muted underline decoration-border underline-offset-4 transition-colors hover:text-fg hover:decoration-fg-muted"
+          >
+            View your composition
+          </button>
+        )}
         <button
           type="button"
-          onClick={onOpenReview}
-          className="self-center font-sans text-sm text-fg-muted underline decoration-border underline-offset-4 transition-colors hover:text-fg hover:decoration-fg-muted"
+          onClick={onImport}
+          className="inline-flex items-center gap-1.5 font-sans text-xs text-fg-subtle transition-colors hover:text-fg-muted"
         >
-          View your composition
+          <Upload className="size-3.5" aria-hidden />
+          Restore from backup
         </button>
-      )}
+      </div>
     </div>
   );
 }
@@ -230,14 +334,18 @@ function ComposeView({
 function ReviewView({
   entries,
   lastKind,
+  showBackupNudge,
   onNewEntry,
   onExport,
+  onImport,
   onClear,
 }: {
   entries: JournalEntry[];
   lastKind: SourceKind | null;
+  showBackupNudge: boolean;
   onNewEntry: () => void;
   onExport: () => void;
+  onImport: () => void;
   onClear: () => void;
 }) {
   return (
@@ -250,6 +358,14 @@ function ReviewView({
       )}
 
       <StatsPanel entries={entries} />
+
+      {showBackupNudge && entries.length > 0 && (
+        <p className="rounded-xl border border-border/70 bg-bg-elevated/50 px-4 py-3 font-sans text-xs leading-relaxed text-fg-muted">
+          A quiet reminder: export a backup file when you can. Browser storage
+          is private, but not immortal — clearing site data or switching
+          devices can erase it.
+        </p>
+      )}
 
       <EntryList entries={entries} />
 
@@ -274,7 +390,15 @@ function ReviewView({
             className="inline-flex items-center gap-1.5 font-sans text-xs text-fg-subtle transition-colors hover:text-fg-muted disabled:opacity-30"
           >
             <Download className="size-3.5" aria-hidden />
-            Export JSON
+            Export backup
+          </button>
+          <button
+            type="button"
+            onClick={onImport}
+            className="inline-flex items-center gap-1.5 font-sans text-xs text-fg-subtle transition-colors hover:text-fg-muted"
+          >
+            <Upload className="size-3.5" aria-hidden />
+            Restore
           </button>
           <button
             type="button"

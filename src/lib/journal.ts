@@ -47,6 +47,10 @@ export const KIND_ORDER: SourceKind[] = [
 ];
 
 const STORAGE_KEY = "borrowed-history-journal:v1";
+const META_KEY = "borrowed-history-journal:meta:v1";
+const IDB_NAME = "borrowed-history-journal";
+const IDB_STORE = "state";
+const IDB_VERSION = 1;
 
 function isBrowser() {
   return typeof window !== "undefined" && typeof localStorage !== "undefined";
@@ -67,6 +71,37 @@ function isEntry(value: unknown): value is JournalEntry {
   );
 }
 
+export type JournalMeta = {
+  updatedAt: string | null;
+  lastExportAt: string | null;
+};
+
+function defaultMeta(): JournalMeta {
+  return { updatedAt: null, lastExportAt: null };
+}
+
+export function loadMeta(): JournalMeta {
+  if (!isBrowser()) return defaultMeta();
+  try {
+    const raw = localStorage.getItem(META_KEY);
+    if (!raw) return defaultMeta();
+    const parsed = JSON.parse(raw) as Partial<JournalMeta>;
+    return {
+      updatedAt:
+        typeof parsed.updatedAt === "string" ? parsed.updatedAt : null,
+      lastExportAt:
+        typeof parsed.lastExportAt === "string" ? parsed.lastExportAt : null,
+    };
+  } catch {
+    return defaultMeta();
+  }
+}
+
+function saveMeta(meta: JournalMeta): void {
+  if (!isBrowser()) return;
+  localStorage.setItem(META_KEY, JSON.stringify(meta));
+}
+
 export function loadEntries(): JournalEntry[] {
   if (!isBrowser()) return [];
   try {
@@ -80,9 +115,105 @@ export function loadEntries(): JournalEntry[] {
   }
 }
 
+function openIdb(): Promise<IDBDatabase | null> {
+  if (!isBrowser() || typeof indexedDB === "undefined") {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+      req.onerror = () => resolve(null);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function idbGetEntries(): Promise<JournalEntry[] | null> {
+  const db = await openIdb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE, "readonly");
+      const store = tx.objectStore(IDB_STORE);
+      const req = store.get("entries");
+      req.onsuccess = () => {
+        const value = req.result;
+        if (!Array.isArray(value)) {
+          resolve(null);
+          return;
+        }
+        resolve(value.filter(isEntry));
+      };
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    } finally {
+      db.close();
+    }
+  });
+}
+
+async function idbSetEntries(entries: JournalEntry[]): Promise<void> {
+  const db = await openIdb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE, "readwrite");
+      const store = tx.objectStore(IDB_STORE);
+      store.put(entries, "entries");
+      store.put(new Date().toISOString(), "updatedAt");
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+    } catch {
+      db.close();
+      resolve();
+    }
+  });
+}
+
+/** Load from localStorage, falling back to IndexedDB if local is empty. */
+export async function loadEntriesDurable(): Promise<JournalEntry[]> {
+  const local = loadEntries();
+  if (local.length > 0) {
+    // Keep IndexedDB in sync when local has data
+    void idbSetEntries(local);
+    return local;
+  }
+  const fromIdb = await idbGetEntries();
+  if (fromIdb && fromIdb.length > 0) {
+    // Restore localStorage from the durable copy
+    if (isBrowser()) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(fromIdb));
+      const meta = loadMeta();
+      if (!meta.updatedAt) {
+        saveMeta({ ...meta, updatedAt: new Date().toISOString() });
+      }
+    }
+    return fromIdb;
+  }
+  return [];
+}
+
 export function saveEntries(entries: JournalEntry[]): void {
   if (!isBrowser()) return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  const meta = loadMeta();
+  saveMeta({ ...meta, updatedAt: new Date().toISOString() });
+  void idbSetEntries(entries);
 }
 
 export function createEntry(text: string, kind: SourceKind): JournalEntry {
@@ -129,9 +260,8 @@ export function computeStats(entries: JournalEntry[]): KindStats {
 export function normalizePercents(stats: KindStats, total: number): KindStats {
   if (total === 0) return stats;
   const kinds = KIND_ORDER;
-  let sum = kinds.reduce((s, k) => s + stats[k].percent, 0);
+  const sum = kinds.reduce((s, k) => s + stats[k].percent, 0);
   if (sum === 100) return stats;
-  // Give remainder to the largest bucket
   const largest = kinds.reduce((a, b) =>
     stats[a].count >= stats[b].count ? a : b,
   );
@@ -147,6 +277,7 @@ export function exportEntriesJson(entries: JournalEntry[]): string {
   return JSON.stringify(
     {
       app: "Borrowed History Journal",
+      version: 1,
       exportedAt: new Date().toISOString(),
       entries,
     },
@@ -166,6 +297,45 @@ export function downloadJson(filename: string, content: string): void {
   URL.revokeObjectURL(url);
 }
 
+export function markExported(): void {
+  const meta = loadMeta();
+  saveMeta({ ...meta, lastExportAt: new Date().toISOString() });
+}
+
+/** Parse an export file (or raw entry array). Returns null if invalid. */
+export function parseImportPayload(raw: string): JournalEntry[] | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      const entries = parsed.filter(isEntry);
+      return entries.length > 0 || parsed.length === 0 ? entries : null;
+    }
+    if (parsed && typeof parsed === "object") {
+      const obj = parsed as { entries?: unknown };
+      if (Array.isArray(obj.entries)) {
+        return obj.entries.filter(isEntry);
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Merge by id; imported entries win on conflict; sort newest first. */
+export function mergeEntries(
+  current: JournalEntry[],
+  incoming: JournalEntry[],
+): JournalEntry[] {
+  const map = new Map<string, JournalEntry>();
+  for (const e of current) map.set(e.id, e);
+  for (const e of incoming) map.set(e.id, e);
+  return Array.from(map.values()).sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+}
+
 export function formatRelativeTime(iso: string): string {
   const date = new Date(iso);
   const now = Date.now();
@@ -181,4 +351,13 @@ export function formatRelativeTime(iso: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+/** Soft nudge: true if there are entries and no export in 14+ days (or never). */
+export function shouldNudgeBackup(meta: JournalMeta, entryCount: number): boolean {
+  if (entryCount === 0) return false;
+  if (!meta.lastExportAt) return entryCount >= 3;
+  const days =
+    (Date.now() - new Date(meta.lastExportAt).getTime()) / (1000 * 60 * 60 * 24);
+  return days >= 14;
 }
