@@ -19,7 +19,7 @@ export function StatsPanel({ entries }: Props) {
     return (
       <div className="rounded-2xl border border-border bg-surface/50 px-5 py-6">
         <p className="font-display text-lg text-fg-muted">
-          No entries yet. Write a claim and notice its source.
+          No entries yet.
         </p>
       </div>
     );
@@ -85,13 +85,6 @@ export function StatsPanel({ entries }: Props) {
           );
         })}
       </ul>
-
-      {stats.borrowed.percent >= 50 && total >= 3 && (
-        <p className="mt-6 border-t border-border pt-5 font-display text-base italic leading-relaxed text-fg-muted">
-          Most of what you hold may not have been lived or deduced — only
-          received.
-        </p>
-      )}
     </div>
   );
 }
