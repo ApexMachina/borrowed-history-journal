@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Borrowed History Journal</title>
+<meta name="description" content="Write one thing you hold to be true. Name how it reached you: deduction, direct experience, or borrowed history. Private, on your device.">
+<meta name="theme-color" content="#07060b">
+<meta name="color-scheme" content="dark">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Borrowed">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Borrowed History Journal">
+<meta property="og:description" content="One claim. Three possible sources. Your own ratio.">
+<meta property="og:url" content="https://apexmachina.github.io/borrowed-history-journal/">
+<meta property="og:image" content="https://apexmachina.github.io/borrowed-history-journal/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Borrowed History Journal">
+<meta name="twitter:description" content="One claim. Three possible sources. Your own ratio.">
+<meta name="twitter:image" content="https://apexmachina.github.io/borrowed-history-journal/og.png">
+<link rel="preload" href="fonts/CormorantGaramond.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="mark" href="./" aria-label="Borrowed History Journal, home">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.5 20.5V10a5.5 5.5 0 0 1 11 0v10.5" stroke="#8fe6ee" stroke-width="1.3"/><path d="M4 20.5h16" stroke="#8fe6ee" stroke-opacity=".45" stroke-width="1.1"/><circle cx="12" cy="12.3" r="1.25" fill="#b8a7ec"/><circle cx="10.1" cy="15.7" r="1.25" fill="#8fe6ee"/><circle cx="13.9" cy="15.7" r="1.25" fill="#d9cfbf"/></svg>
+      <span>Borrowed History</span>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="./" data-nav="write">Write</a>
+      <a href="./#review" data-nav="review">Review</a>
+      <a href="about.html">About</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- WRITE -->
+    <section id="write" class="view" aria-labelledby="w-h">
+      <h1 id="w-h">Where did it come from?</h1>
+      <p class="lede">Write one thing you hold to be true. Then name how it reached you.</p>
+
+      <form id="compose" autocomplete="off">
+        <div class="field">
+          <label for="claim" class="sr">Your claim or reflection</label>
+          <textarea id="claim" maxlength="400" placeholder="Something you know, or think you know…" rows="4"></textarea>
+          <span class="count" id="count" aria-hidden="true">0 / 400</span>
+        </div>
+
+        <div class="sources" role="radiogroup" aria-label="Source">
+          <button type="button" class="src" role="radio" aria-checked="false" data-k="deduction">
+            <i class="dot"></i><span><span class="t">Deduction</span><span class="s">Worked out by reasoning alone.</span></span>
+          </button>
+          <button type="button" class="src" role="radio" aria-checked="false" data-k="direct">
+            <i class="dot"></i><span><span class="t">Direct experience / intuition</span><span class="s">Seen, felt, or lived firsthand.</span></span>
+          </button>
+          <button type="button" class="src" role="radio" aria-checked="false" data-k="borrowed">
+            <i class="dot"></i><span><span class="t">Borrowed history</span><span class="s">Handed to you. Told, read, watched, taught.</span></span>
+          </button>
+        </div>
+
+        <button class="keep" id="keep" type="submit" disabled>Set it down</button>
+        <p class="hint">Kept only on this device.</p>
+      </form>
+    </section>
+
+    <!-- REVIEW -->
+    <section id="review" class="view" aria-labelledby="r-h" hidden>
+      <p class="eyebrow">Review</p>
+      <h1 id="r-h">Where it came from</h1>
+
+      <div class="window" role="group" aria-label="Time window">
+        <button type="button" data-w="7">7 days</button>
+        <button type="button" data-w="30">30 days</button>
+        <button type="button" data-w="all">All</button>
+      </div>
+
+      <div id="has" hidden>
+        <div class="bars">
+          <div class="bar" data-k="deduction"><div class="row"><span class="name">Deduction</span><span class="pct"><b>0</b><small>%</small></span></div><div class="track"><div class="fill"></div></div></div>
+          <div class="bar" data-k="direct"><div class="row"><span class="name">Direct experience / intuition</span><span class="pct"><b>0</b><small>%</small></span></div><div class="track"><div class="fill"></div></div></div>
+          <div class="bar" data-k="borrowed"><div class="row"><span class="name">Borrowed history</span><span class="pct"><b>0</b><small>%</small></span></div><div class="track"><div class="fill"></div></div></div>
+        </div>
+        <p class="basis" id="basis"></p>
+        <h2 class="sr">Entries</h2>
+        <ul class="list" id="list"></ul>
+        <button class="more" id="more" type="button" hidden>Show all</button>
+      </div>
+
+      <div class="empty" id="none" hidden>
+        <span id="none-msg">Nothing set down yet.</span><br>
+        <a href="./">Write the first one</a>
+      </div>
+
+      <div class="tools" aria-label="Your data">
+        <button class="tool" type="button" id="exp-json">Export .json</button>
+        <button class="tool" type="button" id="exp-txt">Export .txt</button>
+        <button class="tool" type="button" id="imp">Restore from file</button>
+        <button class="tool quiet" type="button" id="wipe">Clear everything</button>
+        <input type="file" id="imp-file" accept="application/json,.json" hidden>
+      </div>
+
+      <a class="card" id="book" href="https://dojostudios.gumroad.com/l/lxlyos" target="_blank" rel="noopener">
+        The three paths are walked in full in <em>The Synthetic Era</em>.
+        <span class="go">Jeremy Alvarado · the book</span>
+      </a>
+      <a class="card" id="paper" href="#" target="_blank" rel="noopener" hidden>
+        <em>The paper version.</em> Thirty days, a pencil, the same three sources.
+        <span class="go">Printable journal</span>
+      </a>
+    </section>
+  </main>
+
+  <footer>
+    <span>Dojo Studios · Jeremy Alvarado</span>
+    <span>No accounts. No tracking. Nothing leaves this device.</span>
+  </footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>
